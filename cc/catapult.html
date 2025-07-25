@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>投石機動畫</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(to bottom, #87CEEB 0%, #98FB98 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #canvas {
+            border: 2px solid #333;
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-top: 20px;
+        }
+
+        #controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        label {
+            font-weight: bold;
+        }
+
+        input[type="range"] {
+            width: 150px;
+        }
+
+        #powerDisplay {
+            font-weight: bold;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <h1>投石機動畫演示</h1>
+    
+    <div id="controls">
+        <button id="launchBtn">發射</button>
+        <label for="powerSlider">發射力度：</label>
+        <input type="range" id="powerSlider" min="50" max="150" value="100">
+        <span id="powerDisplay">100%</span>
+    </div>
+    
+    <canvas id="canvas" width="800" height="600"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const launchBtn = document.getElementById('launchBtn');
+        const powerSlider = document.getElementById('powerSlider');
+        const powerDisplay = document.getElementById('powerDisplay');
+
+        // 物理常數
+        const gravity = 0.5;
+        const groundY = canvas.height - 50;
+
+        // 投石機參數
+        const catapult = {
+            baseX: 150,
+            baseY: groundY,
+            armLength: 150,
+            armAngle: -Math.PI / 4, // 初始角度
+            counterweightRadius: 30,
+            counterweightY: 200,
+            projectileRadius: 10
+        };
+
+        // 投射物
+        let projectile = null;
+        let trail = [];
+
+        // 動畫狀態
+        let animating = false;
+        let counterweightFalling = false;
+        let counterweightVelocity = 0;
+        let armAngularVelocity = 0;
+
+        // 更新發射力度顯示
+        powerSlider.addEventListener('input', (e) => {
+            powerDisplay.textContent = e.target.value + '%';
+        });
+
+        // 繪製地面
+        function drawGround() {
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+            
+            // 繪製草地
+            ctx.fillStyle = '#228B22';
+            ctx.fillRect(0, groundY, canvas.width, 5);
+        }
+
+        // 繪製投石機
+        function drawCatapult() {
+            // 底座
+            ctx.fillStyle = '#654321';
+            ctx.fillRect(catapult.baseX - 40, catapult.baseY - 60, 80, 60);
+            
+            // 支撐架
+            ctx.strokeStyle = '#8B4513';
+            ctx.lineWidth = 8;
+            ctx.beginPath();
+            ctx.moveTo(catapult.baseX - 30, catapult.baseY);
+            ctx.lineTo(catapult.baseX, catapult.baseY - 100);
+            ctx.lineTo(catapult.baseX + 30, catapult.baseY);
+            ctx.stroke();
+            
+            // 旋轉軸
+            ctx.fillStyle = '#696969';
+            ctx.beginPath();
+            ctx.arc(catapult.baseX, catapult.baseY - 100, 10, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 杠桿臂
+            ctx.save();
+            ctx.translate(catapult.baseX, catapult.baseY - 100);
+            ctx.rotate(catapult.armAngle);
+            
+            ctx.strokeStyle = '#8B4513';
+            ctx.lineWidth = 12;
+            ctx.beginPath();
+            ctx.moveTo(-catapult.armLength * 0.3, 0);
+            ctx.lineTo(catapult.armLength, 0);
+            ctx.stroke();
+            
+            // 投射物位置（在臂的末端）
+            if (!animating || counterweightFalling) {
+                ctx.fillStyle = '#FF6347';
+                ctx.beginPath();
+                ctx.arc(catapult.armLength, 0, catapult.projectileRadius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // 配重
+            ctx.fillStyle = '#696969';
+            ctx.beginPath();
+            ctx.arc(-catapult.armLength * 0.3, 0, catapult.counterweightRadius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.restore();
+        }
+
+        // 繪製投射物
+        function drawProjectile() {
+            if (projectile) {
+                // 繪製軌跡
+                ctx.strokeStyle = 'rgba(255, 99, 71, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                trail.forEach((point, index) => {
+                    if (index === 0) {
+                        ctx.moveTo(point.x, point.y);
+                    } else {
+                        ctx.lineTo(point.x, point.y);
+                    }
+                });
+                ctx.stroke();
+                
+                // 繪製投射物
+                ctx.fillStyle = '#FF6347';
+                ctx.beginPath();
+                ctx.arc(projectile.x, projectile.y, catapult.projectileRadius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // 重置投石機
+        function reset() {
+            catapult.armAngle = -Math.PI / 4;
+            catapult.counterweightY = 200;
+            projectile = null;
+            trail = [];
+            animating = false;
+            counterweightFalling = false;
+            counterweightVelocity = 0;
+            armAngularVelocity = 0;
+            launchBtn.disabled = false;
+        }
+
+        // 發射
+        function launch() {
+            if (animating) return;
+            
+            animating = true;
+            counterweightFalling = true;
+            launchBtn.disabled = true;
+            trail = [];
+            
+            // 開始動畫
+            animate();
+        }
+
+        // 動畫循環
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            drawGround();
+            
+            // 配重下落階段
+            if (counterweightFalling) {
+                // 配重加速下落
+                counterweightVelocity += gravity;
+                catapult.counterweightY += counterweightVelocity;
+                
+                // 轉換為角速度（簡化的物理模型）
+                armAngularVelocity = counterweightVelocity * 0.02 * (powerSlider.value / 100);
+                catapult.armAngle += armAngularVelocity;
+                
+                // 當臂到達垂直位置時，釋放投射物
+                if (catapult.armAngle > Math.PI / 6) {
+                    counterweightFalling = false;
+                    
+                    // 計算投射物的初始位置和速度
+                    const armEndX = catapult.baseX + Math.cos(catapult.armAngle) * catapult.armLength;
+                    const armEndY = catapult.baseY - 100 + Math.sin(catapult.armAngle) * catapult.armLength;
+                    
+                    // 基於角速度計算切線速度
+                    const tangentialVelocity = armAngularVelocity * catapult.armLength;
+                    
+                    projectile = {
+                        x: armEndX,
+                        y: armEndY,
+                        vx: -Math.sin(catapult.armAngle) * tangentialVelocity,
+                        vy: Math.cos(catapult.armAngle) * tangentialVelocity
+                    };
+                }
+            }
+            
+            // 投射物飛行階段
+            if (projectile) {
+                // 添加到軌跡
+                trail.push({ x: projectile.x, y: projectile.y });
+                if (trail.length > 100) {
+                    trail.shift();
+                }
+                
+                // 更新投射物位置
+                projectile.vx *= 0.99; // 空氣阻力
+                projectile.vy += gravity;
+                projectile.x += projectile.vx;
+                projectile.y += projectile.vy;
+                
+                // 檢查是否落地
+                if (projectile.y > groundY - catapult.projectileRadius) {
+                    projectile.y = groundY - catapult.projectileRadius;
+                    projectile.vx *= 0.7; // 反彈衰減
+                    projectile.vy *= -0.5;
+                    
+                    // 如果速度很小，停止動畫
+                    if (Math.abs(projectile.vx) < 0.5 && Math.abs(projectile.vy) < 1) {
+                        animating = false;
+                        setTimeout(reset, 1000);
+                    }
+                }
+                
+                // 檢查是否飛出畫面
+                if (projectile.x > canvas.width + 50) {
+                    animating = false;
+                    setTimeout(reset, 1000);
+                }
+            }
+            
+            drawCatapult();
+            drawProjectile();
+            
+            if (animating) {
+                requestAnimationFrame(animate);
+            }
+        }
+
+        // 初始繪製
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawGround();
+            drawCatapult();
+        }
+
+        // 事件監聽
+        launchBtn.addEventListener('click', launch);
+
+        // 初始化
+        draw();
+    </script>
+</body>
+</html>

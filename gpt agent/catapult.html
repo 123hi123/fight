@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>簡易投石機動畫</title>
+    <style>
+      /*
+        本範例使用純 HTML、CSS 和 JavaScript 建立一個簡易的投石機動畫。
+        元件說明：
+        - container：整個動畫的容器，設定固定寬高並以相對定位。
+        - ground：代表地面，用於標示底部界線。
+        - lever：投石機的杠杆臂，以 pivot 為旋轉中心，經由 CSS 旋轉變換實現擺動效果。
+        - weight：配重塊，隨杠杆一起移動，位置由程式計算更新。
+        - projectile：投射物，在發射前固定在杠杆端點，發射時脫離並按照拋物線運動。
+        - pivot：顯示杠杆的旋轉中心點，非必需，可用來輔助觀察。
+      */
+      html, body {
+        margin: 0;
+        padding: 0;
+        font-family: sans-serif;
+        background: #f5f1e9;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        flex-direction: column;
+      }
+      #container {
+        position: relative;
+        width: 900px;
+        height: 480px;
+        border: 2px solid #444;
+        background: linear-gradient(#e7dac7, #d9c3a9);
+        overflow: hidden;
+      }
+      #ground {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 60px;
+        background: #7c5a3c;
+      }
+      #lever {
+        position: absolute;
+        width: 200px; /* 杠杆長度會在程式中覆寫 */
+        height: 8px;
+        background: #8a5f3d;
+        border-radius: 4px;
+        transform-origin: 0px 50%; /* 以左側中心為旋轉原點 */
+      }
+      #weight {
+        position: absolute;
+        width: 40px;
+        height: 40px;
+        background: #4d4d4d;
+        border-radius: 6px;
+      }
+      #projectile {
+        position: absolute;
+        width: 20px;
+        height: 20px;
+        background: #c65151;
+        border-radius: 50%;
+      }
+      #pivot {
+        position: absolute;
+        width: 8px;
+        height: 8px;
+        background: #222;
+        border-radius: 50%;
+      }
+      button {
+        margin-top: 12px;
+        padding: 8px 16px;
+        font-size: 16px;
+        background-color: #426a5a;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:disabled {
+        background-color: #8fa79c;
+        cursor: not-allowed;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="container">
+      <div id="ground"></div>
+      <div id="pivot"></div>
+      <div id="lever"></div>
+      <div id="weight"></div>
+      <div id="projectile"></div>
+    </div>
+    <button id="button">發射</button>
+    <script>
+      (function() {
+        /**
+         * 這段程式負責控制投石機動畫，包括杠杆旋轉、配重下落以及投射物的拋物線運動。
+         * 為了保持程式簡潔，使用了常數來代表幾何與物理參數。
+         */
+        const container = document.getElementById('container');
+        const lever = document.getElementById('lever');
+        const weight = document.getElementById('weight');
+        const projectile = document.getElementById('projectile');
+        const pivotDot = document.getElementById('pivot');
+        const button = document.getElementById('button');
+
+        // 幾何常數：旋轉中心、杠杆長度、配重位置、投射物距離
+        // 旋轉中心座標設定。pivotX 靠近左側，pivotY 接近畫面底部。
+        const pivotX = 200;
+        const pivotY = 360;
+        // 杠杆長度與各元件尺寸。為了增強動畫效果，將杠杆稍微加長，配重臂稍微變長。
+        const leverLength = 220;
+        const weightLength = 90;
+        // 投射物距離旋轉中心的距離等於杠杆長度 (長臂)。
+        const projectileOffset = leverLength;
+
+        // 角度設定（單位：度）
+        // 角度設定：
+        // 初始角度以 0 度為水平向右，採用 0 度讓配重和杠杆以水平狀態開始。
+        const initialAngleDeg = 0;
+        // 當杠杆轉至一定角度時便釋放投射物，此處設定為 50 度。
+        const releaseAngleDeg = 50;
+        // 杠杆最終停止角度，設定稍大一些以顯示完整擺動。
+        const finalAngleDeg = 80;
+
+        // 轉換為弧度
+        const degToRad = (deg) => deg * Math.PI / 180;
+        const initialAngleRad = degToRad(initialAngleDeg);
+        const releaseAngleRad = degToRad(releaseAngleDeg);
+        const finalAngleRad = degToRad(finalAngleDeg);
+
+        // 角加速度 (單位：rad/s²)，用於模擬杠杆在配重驅動下的旋轉。
+        const alpha = 6;
+        // 由運動方程 θ(t) = θ₀ + ½αt² 解出某角度所需時間。
+        const deltaRelease = releaseAngleRad - initialAngleRad;
+        const deltaFinal = finalAngleRad - initialAngleRad;
+        const tRelease = Math.sqrt(2 * deltaRelease / alpha);
+        const tFinal = Math.sqrt(2 * deltaFinal / alpha);
+
+        // 重力加速度 (畫面座標，單位：px/s²)，正方向向下。
+        const g = 800;
+
+        // 用於記錄動畫狀態的變數
+        let isAnimating = false;
+        let startTime = 0;
+        let projectileLaunched = false;
+        let projStartTime = 0;
+        let projectileStartX = 0;
+        let projectileStartY = 0;
+        let vx = 0;
+        let vy = 0;
+
+        // 將 pivot 的位置設定到頁面上
+        pivotDot.style.left = (pivotX - 4) + 'px';
+        pivotDot.style.top = (pivotY - 4) + 'px';
+
+        // 初始化杠杆、配重與投射物的位置
+        function resetPositions() {
+          // 設定杠杆尺寸與位置
+          lever.style.width = leverLength + 'px';
+          lever.style.height = '8px';
+          lever.style.left = pivotX + 'px';
+          // 杠杆的垂直置中 (高度的一半)
+          lever.style.top = (pivotY - 4) + 'px';
+          // CSS 中正角度為順時針旋轉，但在數學定義中正角度為逆時針。
+          // 為了讓杠杆正確地逆時針旋轉（長臂向上），在設定樣式時取負值。
+          lever.style.transform = 'rotate(' + (-initialAngleDeg) + 'deg)';
+
+          // 計算並設定配重初始位置
+          const wx = Math.cos(initialAngleRad + Math.PI) * weightLength;
+          const wy_math = Math.sin(initialAngleRad + Math.PI) * weightLength;
+          // 屏幕 y 座標與數學座標相反
+          const wy_screen = -wy_math;
+          weight.style.left = (pivotX + wx - 20) + 'px';
+          weight.style.top = (pivotY + wy_screen - 20) + 'px';
+
+          // 計算並設定投射物初始位置 (位於杠杆端點)
+          const px = Math.cos(initialAngleRad) * projectileOffset;
+          const py_math = Math.sin(initialAngleRad) * projectileOffset;
+          const py_screen = -py_math;
+          projectile.style.left = (pivotX + px - 10) + 'px';
+          projectile.style.top = (pivotY + py_screen - 10) + 'px';
+          projectile.style.display = 'block';
+          weight.style.display = 'block';
+          projectileLaunched = false;
+          vx = 0;
+          vy = 0;
+        }
+        // 初始重置
+        resetPositions();
+
+        /**
+         * 主動畫迴圈，每幀更新杠杆旋轉、配重位置和投射物軌跡。
+         */
+        function animate() {
+          if (!isAnimating) return;
+          const now = performance.now();
+          const elapsed = (now - startTime) / 1000; // elapsed in seconds
+          // 杠杆旋轉階段
+          if (elapsed <= tFinal) {
+            // 計算當前角度 θ(t) = θ₀ + ½αt²
+            const currentAngle = initialAngleRad + 0.5 * alpha * Math.pow(Math.min(elapsed, tFinal), 2);
+            const currentAngleDeg = currentAngle * 180 / Math.PI;
+            // 在 CSS 中，正角度為順時針方向；為了符合數學上的逆時針旋轉，需取負值。
+            lever.style.transform = 'rotate(' + (-currentAngleDeg) + 'deg)';
+            // 更新配重位置：位置在杠杆相反方向
+            const wx = Math.cos(currentAngle + Math.PI) * weightLength;
+            const wy_math = Math.sin(currentAngle + Math.PI) * weightLength;
+            const wy_screen = -wy_math;
+            weight.style.left = (pivotX + wx - 20) + 'px';
+            weight.style.top = (pivotY + wy_screen - 20) + 'px';
+            // 在發射前，投射物跟隨杠杆端點移動
+            if (!projectileLaunched) {
+              const px = Math.cos(currentAngle) * projectileOffset;
+              const py_math = Math.sin(currentAngle) * projectileOffset;
+              const py_screen = -py_math;
+              projectile.style.left = (pivotX + px - 10) + 'px';
+              projectile.style.top = (pivotY + py_screen - 10) + 'px';
+              // 判斷是否達到釋放角度，若已達到則計算投射物初速度並啟動拋體運動
+              if (currentAngle >= releaseAngleRad) {
+                projectileLaunched = true;
+                projStartTime = now;
+                // 角速度 ω = α * t 於發射瞬間
+                const w_release = alpha * tRelease;
+                // 杠杆端點速度大小 v_tip = ω * r
+                const v_tip = w_release * projectileOffset;
+                // 發射方向：為了讓投射物向右上方飛出，使用 currentAngle - 90° (即從旋轉的切線方向取一個順時針方向)
+                const direction = currentAngle - Math.PI / 2;
+                vx = v_tip * Math.cos(direction);
+                const vy_math = v_tip * Math.sin(direction);
+                // 由數學座標轉換為畫面座標 (向上為負)
+                vy = -vy_math;
+                // 記錄投射物中心的初始位置
+                projectileStartX = parseFloat(projectile.style.left) + 10;
+                projectileStartY = parseFloat(projectile.style.top) + 10;
+              }
+            }
+          }
+          // 投射物拋物線運動階段
+          if (projectileLaunched) {
+            const t = (now - projStartTime) / 1000;
+            // 拋體運動方程：x(t) = x0 + vx t，y(t) = y0 + vy t + ½ g t²
+            const xPos = projectileStartX + vx * t;
+            const yPos = projectileStartY + vy * t + 0.5 * g * t * t;
+            projectile.style.left = (xPos - 10) + 'px';
+            projectile.style.top = (yPos - 10) + 'px';
+            // 若超出容器範圍則隱藏
+            if (yPos > container.offsetHeight - 20 || xPos > container.offsetWidth + 20 || yPos < -20) {
+              projectileLaunched = false;
+              projectile.style.display = 'none';
+            }
+          }
+          // 判斷是否繼續動畫
+          if (elapsed <= tFinal || projectileLaunched) {
+            requestAnimationFrame(animate);
+          } else {
+            isAnimating = false;
+            button.disabled = false;
+          }
+        }
+
+        // 綁定發射按鈕
+        button.addEventListener('click', () => {
+          if (isAnimating) return;
+          isAnimating = true;
+          button.disabled = true;
+          resetPositions();
+          startTime = performance.now();
+          requestAnimationFrame(animate);
+        });
+      })();
+    </script>
+  </body>
+</html>

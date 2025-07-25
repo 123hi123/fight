@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高級天氣展示卡片</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #0a0a0a;
+            color: #ffffff;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* 全屏天氣背景容器 */
+        .weather-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            transition: opacity 0.8s ease;
+        }
+
+        /* 主容器 */
+        .container {
+            position: relative;
+            z-index: 10;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        /* 天氣卡片 - 毛玻璃效果 */
+        .weather-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 30px;
+            padding: 40px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 
+                0 8px 32px rgba(0, 0, 0, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            transition: all 0.5s ease;
+            animation: cardEntrance 0.8s ease-out;
+        }
+
+        @keyframes cardEntrance {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* 天氣圖標容器 */
+        .weather-icon {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto 30px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 城市名稱 */
+        .city-name {
+            font-size: 28px;
+            font-weight: 300;
+            text-align: center;
+            margin-bottom: 10px;
+            letter-spacing: 1px;
+        }
+
+        /* 溫度顯示 */
+        .temperature {
+            font-size: 72px;
+            font-weight: 200;
+            text-align: center;
+            margin-bottom: 10px;
+            line-height: 1;
+        }
+
+        .temperature-unit {
+            font-size: 36px;
+            font-weight: 300;
+            vertical-align: top;
+        }
+
+        /* 天氣描述 */
+        .weather-description {
+            font-size: 20px;
+            text-align: center;
+            opacity: 0.8;
+            margin-bottom: 30px;
+            font-weight: 300;
+        }
+
+        /* 控制按鈕容器 */
+        .weather-controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        /* 天氣切換按鈕 */
+        .weather-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .weather-btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transition: width 0.6s ease, height 0.6s ease;
+        }
+
+        .weather-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .weather-btn:hover::before {
+            width: 300px;
+            height: 300px;
+        }
+
+        .weather-btn.active {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+
+        /* 晴天動畫 */
+        .sunny-animation {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .sun {
+            position: absolute;
+            width: 150px;
+            height: 150px;
+            background: radial-gradient(circle, #ffd700 0%, #ffb347 100%);
+            border-radius: 50%;
+            top: 10%;
+            right: 10%;
+            animation: sunPulse 4s ease-in-out infinite;
+            box-shadow: 0 0 80px rgba(255, 215, 0, 0.6);
+        }
+
+        @keyframes sunPulse {
+            0%, 100% {
+                transform: scale(1);
+                box-shadow: 0 0 80px rgba(255, 215, 0, 0.6);
+            }
+            50% {
+                transform: scale(1.1);
+                box-shadow: 0 0 120px rgba(255, 215, 0, 0.8);
+            }
+        }
+
+        .cloud {
+            position: absolute;
+            width: 100px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 100px;
+            opacity: 0.8;
+        }
+
+        .cloud::before {
+            content: '';
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            top: -25px;
+            left: 10px;
+        }
+
+        .cloud::after {
+            content: '';
+            position: absolute;
+            width: 60px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            top: -15px;
+            right: 10px;
+        }
+
+        .cloud1 {
+            top: 20%;
+            left: -100px;
+            animation: cloudMove 30s linear infinite;
+        }
+
+        .cloud2 {
+            top: 40%;
+            left: -150px;
+            animation: cloudMove 45s linear infinite;
+            animation-delay: 10s;
+        }
+
+        @keyframes cloudMove {
+            from {
+                left: -200px;
+            }
+            to {
+                left: 110%;
+            }
+        }
+
+        /* 雨天動畫 */
+        .rainy-animation {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            overflow: hidden;
+        }
+
+        .rain {
+            position: absolute;
+            width: 2px;
+            height: 100px;
+            background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.4));
+            animation: rainFall linear infinite;
+        }
+
+        @keyframes rainFall {
+            from {
+                transform: translateY(-100px);
+            }
+            to {
+                transform: translateY(calc(100vh + 100px));
+            }
+        }
+
+        /* 下雪動畫 */
+        .snowy-animation {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #4b6cb7 0%, #182848 100%);
+            overflow: hidden;
+        }
+
+        .snowflake {
+            position: absolute;
+            color: #ffffff;
+            font-size: 20px;
+            animation: snowFall linear infinite;
+        }
+
+        @keyframes snowFall {
+            from {
+                transform: translateY(-100px) rotate(0deg);
+            }
+            to {
+                transform: translateY(calc(100vh + 100px)) rotate(360deg);
+            }
+        }
+
+        /* 大風動畫 */
+        .windy-animation {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #536976 0%, #292e49 100%);
+            overflow: hidden;
+        }
+
+        .wind-particle {
+            position: absolute;
+            width: 100px;
+            height: 2px;
+            background: rgba(255, 255, 255, 0.3);
+            animation: windBlow linear infinite;
+        }
+
+        @keyframes windBlow {
+            from {
+                transform: translateX(-100px) translateY(0) rotate(-10deg);
+            }
+            to {
+                transform: translateX(calc(100vw + 100px)) translateY(30px) rotate(-10deg);
+            }
+        }
+
+        /* 天氣圖標樣式 */
+        .weather-icon-sunny {
+            width: 80px;
+            height: 80px;
+            background: radial-gradient(circle, #ffd700 0%, #ffb347 100%);
+            border-radius: 50%;
+            box-shadow: 0 0 40px rgba(255, 215, 0, 0.5);
+            animation: iconPulse 3s ease-in-out infinite;
+        }
+
+        .weather-icon-rainy {
+            width: 80px;
+            height: 60px;
+            background: #4a5568;
+            border-radius: 50px;
+            position: relative;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .weather-icon-rainy::after {
+            content: '|||';
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #4299e1;
+            font-size: 20px;
+            letter-spacing: 5px;
+        }
+
+        .weather-icon-snowy {
+            font-size: 60px;
+            animation: iconRotate 10s linear infinite;
+        }
+
+        .weather-icon-windy {
+            font-size: 60px;
+            animation: iconWave 2s ease-in-out infinite;
+        }
+
+        @keyframes iconPulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.1);
+            }
+        }
+
+        @keyframes iconRotate {
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes iconWave {
+            0%, 100% {
+                transform: translateX(0);
+            }
+            50% {
+                transform: translateX(10px);
+            }
+        }
+
+        /* 響應式設計 */
+        @media (max-width: 480px) {
+            .weather-card {
+                padding: 30px 20px;
+            }
+
+            .temperature {
+                font-size: 60px;
+            }
+
+            .city-name {
+                font-size: 24px;
+            }
+
+            .weather-description {
+                font-size: 18px;
+            }
+
+            .weather-btn {
+                padding: 10px 20px;
+                font-size: 13px;
+            }
+        }
+
+        /* 隱藏類 */
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- 天氣背景動畫容器 -->
+    <div class="weather-background" id="weatherBackground">
+        <!-- 晴天背景 -->
+        <div class="sunny-animation hidden" id="sunnyBg">
+            <div class="sun"></div>
+            <div class="cloud cloud1"></div>
+            <div class="cloud cloud2"></div>
+        </div>
+
+        <!-- 雨天背景 -->
+        <div class="rainy-animation hidden" id="rainyBg"></div>
+
+        <!-- 下雪背景 -->
+        <div class="snowy-animation hidden" id="snowyBg"></div>
+
+        <!-- 大風背景 -->
+        <div class="windy-animation hidden" id="windyBg"></div>
+    </div>
+
+    <!-- 主容器 -->
+    <div class="container">
+        <div class="weather-card">
+            <!-- 天氣圖標 -->
+            <div class="weather-icon" id="weatherIcon">
+                <div class="weather-icon-sunny"></div>
+            </div>
+
+            <!-- 城市名稱 -->
+            <h1 class="city-name">台北市</h1>
+
+            <!-- 溫度 -->
+            <div class="temperature">
+                25<span class="temperature-unit">°C</span>
+            </div>
+
+            <!-- 天氣描述 -->
+            <p class="weather-description" id="weatherDesc">晴朗無雲</p>
+
+            <!-- 控制按鈕 -->
+            <div class="weather-controls">
+                <button class="weather-btn active" data-weather="sunny">晴天</button>
+                <button class="weather-btn" data-weather="rainy">雨天</button>
+                <button class="weather-btn" data-weather="snowy">下雪</button>
+                <button class="weather-btn" data-weather="windy">大風</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 天氣配置
+        const weatherConfigs = {
+            sunny: {
+                icon: '<div class="weather-icon-sunny"></div>',
+                description: '晴朗無雲',
+                temperature: '25',
+                backgroundColor: 'sunnyBg'
+            },
+            rainy: {
+                icon: '<div class="weather-icon-rainy"></div>',
+                description: '陣雨',
+                temperature: '18',
+                backgroundColor: 'rainyBg'
+            },
+            snowy: {
+                icon: '<div class="weather-icon-snowy">❄</div>',
+                description: '大雪紛飛',
+                temperature: '-2',
+                backgroundColor: 'snowyBg'
+            },
+            windy: {
+                icon: '<div class="weather-icon-windy">🌪</div>',
+                description: '強風警報',
+                temperature: '15',
+                backgroundColor: 'windyBg'
+            }
+        };
+
+        // 初始化
+        let currentWeather = 'sunny';
+        const weatherIcon = document.getElementById('weatherIcon');
+        const weatherDesc = document.getElementById('weatherDesc');
+        const temperatureElement = document.querySelector('.temperature');
+        const weatherButtons = document.querySelectorAll('.weather-btn');
+
+        // 創建雨滴
+        function createRaindrops() {
+            const rainyBg = document.getElementById('rainyBg');
+            rainyBg.innerHTML = ''; // 清空現有雨滴
+            
+            for (let i = 0; i < 100; i++) {
+                const rain = document.createElement('div');
+                rain.className = 'rain';
+                rain.style.left = Math.random() * 100 + '%';
+                rain.style.animationDuration = (Math.random() * 2 + 1) + 's';
+                rain.style.animationDelay = Math.random() * 2 + 's';
+                rain.style.opacity = Math.random() * 0.5 + 0.3;
+                rainyBg.appendChild(rain);
+            }
+        }
+
+        // 創建雪花
+        function createSnowflakes() {
+            const snowyBg = document.getElementById('snowyBg');
+            snowyBg.innerHTML = ''; // 清空現有雪花
+            
+            for (let i = 0; i < 50; i++) {
+                const snowflake = document.createElement('div');
+                snowflake.className = 'snowflake';
+                snowflake.innerHTML = '❄';
+                snowflake.style.left = Math.random() * 100 + '%';
+                snowflake.style.animationDuration = (Math.random() * 5 + 5) + 's';
+                snowflake.style.animationDelay = Math.random() * 5 + 's';
+                snowflake.style.fontSize = (Math.random() * 20 + 10) + 'px';
+                snowflake.style.opacity = Math.random() * 0.8 + 0.2;
+                snowyBg.appendChild(snowflake);
+            }
+        }
+
+        // 創建風粒子
+        function createWindParticles() {
+            const windyBg = document.getElementById('windyBg');
+            windyBg.innerHTML = ''; // 清空現有粒子
+            
+            for (let i = 0; i < 20; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'wind-particle';
+                particle.style.top = Math.random() * 100 + '%';
+                particle.style.animationDuration = (Math.random() * 2 + 1) + 's';
+                particle.style.animationDelay = Math.random() * 2 + 's';
+                particle.style.opacity = Math.random() * 0.5 + 0.2;
+                windyBg.appendChild(particle);
+            }
+        }
+
+        // 切換天氣
+        function switchWeather(weather) {
+            if (weather === currentWeather) return;
+
+            // 移除所有激活狀態
+            weatherButtons.forEach(btn => btn.classList.remove('active'));
+            
+            // 添加新的激活狀態
+            document.querySelector(`[data-weather="${weather}"]`).classList.add('active');
+
+            // 隱藏所有背景
+            document.querySelectorAll('.weather-background > div').forEach(bg => {
+                bg.classList.add('hidden');
+            });
+
+            // 顯示對應背景
+            const config = weatherConfigs[weather];
+            const newBg = document.getElementById(config.backgroundColor);
+            setTimeout(() => {
+                newBg.classList.remove('hidden');
+            }, 100);
+
+            // 更新天氣信息
+            weatherIcon.innerHTML = config.icon;
+            weatherDesc.textContent = config.description;
+            temperatureElement.innerHTML = `${config.temperature}<span class="temperature-unit">°C</span>`;
+
+            // 創建動畫元素
+            if (weather === 'rainy') {
+                createRaindrops();
+            } else if (weather === 'snowy') {
+                createSnowflakes();
+            } else if (weather === 'windy') {
+                createWindParticles();
+            }
+
+            currentWeather = weather;
+        }
+
+        // 綁定按鈕事件
+        weatherButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const weather = btn.getAttribute('data-weather');
+                switchWeather(weather);
+            });
+        });
+
+        // 初始化天氣
+        switchWeather('sunny');
+
+        // 添加卡片進入動畫
+        window.addEventListener('load', () => {
+            document.querySelector('.weather-card').style.opacity = '1';
+        });
+    </script>
+</body>
+</html>
