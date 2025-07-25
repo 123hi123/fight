@@ -3,6 +3,13 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [ main ]
+    paths:
+      - '**.html'
+      - '**.css'
+      - '**.js'
+      - 'cc/**'
+      - 'claudeconsole/**'
+      - 'gpt agent/**'
   workflow_dispatch:
 
 permissions:
